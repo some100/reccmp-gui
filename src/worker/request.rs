@@ -152,6 +152,8 @@ impl CompileRequest {
 
         tx.send(Message::CompileFinished(self.generation))?;
 
+        ctx.request_repaint();
+
         Ok(())
     }
 }
@@ -202,6 +204,8 @@ impl ReccmpRequest {
             generation: self.info.generation,
         })?;
 
+        ctx.request_repaint();
+
         Ok(())
     }
 }
@@ -242,6 +246,8 @@ impl StackcmpRequest {
             generation: self.info.generation,
         })?;
 
+        ctx.request_repaint();
+
         Ok(())
     }
 }
@@ -274,6 +280,9 @@ impl DatacmpRequest {
         }
 
         tx.send(Message::DatacmpFinished(self.info.generation))?;
+
+        ctx.request_repaint();
+
         Ok(())
     }
 }
@@ -311,6 +320,9 @@ impl RoadmapRequest {
             focus: self.focus,
             generation: self.info.generation,
         })?;
+
+        ctx.request_repaint();
+
         Ok(())
     }
 }
