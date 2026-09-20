@@ -2,7 +2,7 @@
 
 maybe objdiff-style gui wrapper for reccmp.
 
-This was primarily developed for and tested with the [Touhou 7 decompilation project](https://github.com/some100/th07) as well as the [Touhou 8 decompilation project](https://github.com/GensokyoClub/th08). There may be edge cases unaccounted for in programs outside of those projects. If there happen to be any, please [open an issue](https://github.com/some100/reccmp-gui/issues/new).
+This was primarily developed for and tested with the [Touhou 7 decompilation project](https://github.com/some100/th07), as well as the [Touhou 8](https://github.com/GensokyoClub/th08) and [Touhou 6](https://github.com/GensokyoClub/th06) decompilation projects. There may be edge cases unaccounted for in programs outside of those projects. If there happen to be any, please [open an issue](https://github.com/some100/reccmp-gui/issues/new).
 
 This is only for use with 32-bit x86 applications with old versions of MSVC. If you aren't using that, then you probably aren't using reccmp in the first place.
 
@@ -15,6 +15,8 @@ This is only for use with 32-bit x86 applications with old versions of MSVC. If 
 Just use `cargo build -r` ❓
 
 ## Usage
+
+This assumes that you have a fully setup reccmp project with `reccmp-project.yml`, `reccmp-user.yml`, and `reccmp-build.yml`.
 
 1. Go into `File -> New`. Select the project directory in the folder picker (that is the directory containing `reccmp-project.yml` and `reccmp-user.yml`), fill out the build command, and click `Finish`. Or load the `reccmp-gui.yml` in `File -> Open -> Browse...`.
 2. If they're not already auto-detected, browse for the locations of `reccmp-reccmp` and co. Then, select your target. It'll automatically start building after doing that.

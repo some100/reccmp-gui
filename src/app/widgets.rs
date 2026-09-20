@@ -7,7 +7,10 @@ use eframe::{
 };
 use std::path::{Path, PathBuf};
 
-use crate::disassemble::{Instruction, diff::DiffKind};
+use crate::{
+    disassemble::{Instruction, diff::DiffKind},
+    reccmp::Address,
+};
 
 pub const MATCH_TEXT: Color32 = Color32::from_rgb(190, 190, 180);
 pub const SEPARATOR_TEXT: Color32 = Color32::from_rgb(110, 110, 110);
@@ -265,6 +268,7 @@ pub const BRANCH_COLORS: [Color32; 8] = [
 pub struct Branch {
     pub from_row: usize,
     pub to_row: usize,
+    pub from_addr: Option<Address>,
     pub color: Color32,
 }
 
@@ -304,10 +308,103 @@ impl<'a> InstructionRow<'a> {
             clicked_target_row,
         }
     }
+
+    fn render_branches(&mut self, ui: &mut egui::Ui, branches: &RowBranches) {
+        for branch in branches.incoming.iter().rev() {
+            let arrow = RichText::new("~>").monospace().color(branch.color).strong();
+
+            let tooltip = match branch.from_addr {
+                Some(addr) => format!("Jump from {addr} (line {})", branch.from_row + 1),
+                None => {
+                    format!("Jump from line {}", branch.from_row + 1)
+                }
+            };
+
+            let resp = ui
+                .add(Label::new(arrow).sense(egui::Sense::click()))
+                .on_hover_text(tooltip);
+
+            if resp.hovered() {
+                ui.set_cursor_icon(egui::CursorIcon::PointingHand);
+            }
+            if resp.clicked() {
+                *self.clicked_target_row = Some(branch.from_row);
+            }
+        }
+    }
+
+    fn render_branch_menu(&mut self, ui: &mut egui::Ui, branches: &RowBranches, count: usize) {
+        let primary = &branches.incoming[0];
+        let arrow = RichText::new("~>")
+            .monospace()
+            .color(primary.color)
+            .strong();
+
+        let primary_tooltip = match primary.from_addr {
+            Some(addr) => addr.to_string(),
+            None => return,
+        };
+
+        let resp = ui
+            .add(Label::new(arrow).sense(egui::Sense::click()))
+            .on_hover_text(primary_tooltip);
+
+        if resp.hovered() {
+            ui.set_cursor_icon(egui::CursorIcon::PointingHand);
+        }
+        if resp.clicked() {
+            *self.clicked_target_row = Some(primary.from_row);
+        }
+
+        let badge_text = RichText::new(format!("[{}]", count - 1))
+            .monospace()
+            .size(11.0)
+            .color(Color32::LIGHT_YELLOW)
+            .strong();
+
+        ui.style_mut().spacing.button_padding = egui::vec2(1.0, 0.0);
+        let menu_resp = ui.menu_button(badge_text, |ui| {
+            ui.set_min_width(180.0);
+            ui.label(RichText::new(format!("{count} incoming jumps:")).strong());
+            ui.separator();
+
+            for branch in &branches.incoming {
+                let addr_str = match branch.from_addr {
+                    Some(addr) => addr.to_string(),
+                    None => continue,
+                };
+                let label = RichText::new(format!("~> {addr_str}"))
+                    .monospace()
+                    .color(branch.color);
+
+                if ui.button(label).clicked() {
+                    *self.clicked_target_row = Some(branch.from_row);
+                    ui.close();
+                }
+            }
+        });
+
+        menu_resp.response.on_hover_ui(|ui| {
+            ui.label(RichText::new(format!("{count} incoming jumps to this line:")).strong());
+            for branch in &branches.incoming {
+                let addr_str = match branch.from_addr {
+                    Some(addr) => addr.to_string(),
+                    None => continue,
+                };
+                ui.label(
+                    RichText::new(format!("~> {addr_str}"))
+                        .monospace()
+                        .color(branch.color),
+                );
+            }
+        });
+    }
 }
 
 impl Widget for InstructionRow<'_> {
-    fn ui(self, ui: &mut egui::Ui) -> Response {
+    fn ui(mut self, ui: &mut egui::Ui) -> Response {
+        const GUTTER_WIDTH: f32 = 38.0;
+
         let Some(instr) = self.instruction else {
             return ui.allocate_response(egui::Vec2::ZERO, egui::Sense::hover());
         };
@@ -323,31 +420,26 @@ impl Widget for InstructionRow<'_> {
                 ui.style_mut().override_text_style = Some(TextStyle::Monospace);
 
                 ui.horizontal(|ui| {
+                    ui.colored_label(Color32::GRAY, &instr.address_str);
+
                     ui.allocate_ui_with_layout(
-                        egui::vec2(24.0, ui.spacing().interact_size.y),
+                        egui::vec2(GUTTER_WIDTH, ui.spacing().interact_size.y),
                         egui::Layout::right_to_left(egui::Align::Center),
                         |ui| {
                             ui.spacing_mut().item_spacing.x = 2.0;
-                            if let Some(branches) = self.branches {
-                                for branch in branches.incoming.iter().rev() {
-                                    let arrow = RichText::new("~>")
-                                        .monospace()
-                                        .color(branch.color)
-                                        .strong();
-                                    let resp =
-                                        ui.add(Label::new(arrow).sense(egui::Sense::click()));
-                                    if resp.hovered() {
-                                        ui.set_cursor_icon(egui::CursorIcon::PointingHand);
-                                    }
-                                    if resp.clicked() {
-                                        *self.clicked_target_row = Some(branch.from_row);
-                                    }
+                            if let Some(branches) = self.branches
+                                && !branches.incoming.is_empty()
+                            {
+                                let count = branches.incoming.len();
+
+                                if count <= 2 {
+                                    self.render_branches(ui, branches);
+                                } else {
+                                    self.render_branch_menu(ui, branches, count);
                                 }
                             }
                         },
                     );
-
-                    ui.colored_label(Color32::GRAY, &instr.address_str);
 
                     let font_id = TextStyle::Monospace.resolve(ui.style());
                     let mut job = LayoutJob::default();

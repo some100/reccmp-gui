@@ -178,6 +178,7 @@ impl DiffTab {
                     let branch = Branch {
                         from_row: i,
                         to_row: target_row,
+                        from_addr: instr.address,
                         color,
                     };
                     row_branches[i].outgoing = Some(branch);
