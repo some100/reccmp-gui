@@ -1,5 +1,5 @@
-use core::ops::Range;
-use std::collections::HashMap;
+use core::{ops::Range, time::Duration};
+use std::{collections::HashMap, time::Instant};
 
 use eframe::egui::{self, Color32, RichText, ScrollArea, TextStyle};
 use iced_x86::FlowControl;
@@ -35,6 +35,7 @@ pub struct DiffTab {
     orig_branches: Vec<RowBranches>,
     recomp_branches: Vec<RowBranches>,
     pending_scroll_row: Option<usize>,
+    highlighted_row: Option<(usize, Instant)>,
 }
 
 impl DiffTab {
@@ -53,6 +54,7 @@ impl DiffTab {
             orig_branches: Vec::new(),
             recomp_branches: Vec::new(),
             pending_scroll_row: None,
+            highlighted_row: None,
         };
         tab.hunks = tab.get_hunk_starts();
         tab.recompute_branches();
@@ -68,6 +70,7 @@ impl DiffTab {
         self.error = false;
         self.hunks = self.get_hunk_starts();
         self.recompute_branches();
+        self.highlighted_row = None;
     }
 
     pub fn set_tables(&mut self, tables: TablesDiff) {
@@ -84,6 +87,7 @@ impl DiffTab {
             self.rows.clear();
             self.orig_branches.clear();
             self.recomp_branches.clear();
+            self.highlighted_row = None;
         }
     }
 
@@ -185,14 +189,21 @@ impl DiffTab {
         row_branches
     }
 
-    fn render_diff_grid(&mut self, ui: &mut egui::Ui, row_range: Range<usize>) {
+    fn render_diff_grid(
+        &mut self,
+        ui: &mut egui::Ui,
+        row_range: Range<usize>,
+        highlight: Option<(usize, f32)>,
+    ) {
         const DIFF_BG: Color32 = Color32::from_rgb(34, 34, 34);
         const ADVISORY_BG: Color32 = Color32::from_rgb(38, 36, 25);
         const ORIG_DIFF_TEXT: Color32 = Color32::from_rgb(240, 110, 110);
         const RECOMP_DIFF_TEXT: Color32 = Color32::from_rgb(110, 225, 110);
         const ADVISORY_TEXT: Color32 = Color32::from_rgb(220, 200, 100);
+        const HIGHLIGHT_BG: Color32 = Color32::from_rgb(45, 80, 125);
 
         let mut clicked_row = None;
+        let panel_bg = ui.visuals().panel_fill;
 
         egui::Grid::new("diff_grid")
             .num_columns(2)
@@ -204,7 +215,7 @@ impl DiffTab {
                     let orig_b = self.orig_branches.get(row_idx);
                     let recomp_b = self.recomp_branches.get(row_idx);
 
-                    let (orig_bg, recomp_bg, orig_color, recomp_color) = match row.kind {
+                    let (mut orig_bg, mut recomp_bg, orig_color, recomp_color) = match row.kind {
                         DiffKind::Matched => (
                             Color32::TRANSPARENT,
                             Color32::TRANSPARENT,
@@ -230,6 +241,24 @@ impl DiffTab {
                             RECOMP_DIFF_TEXT,
                         ),
                     };
+
+                    if let Some((h_row, factor)) = highlight
+                        && h_row == row_idx
+                    {
+                        let base_orig = if orig_bg == Color32::TRANSPARENT {
+                            panel_bg
+                        } else {
+                            orig_bg
+                        };
+                        let base_recomp = if recomp_bg == Color32::TRANSPARENT {
+                            panel_bg
+                        } else {
+                            recomp_bg
+                        };
+
+                        orig_bg = lerp_color(base_orig, HIGHLIGHT_BG, factor);
+                        recomp_bg = lerp_color(base_recomp, HIGHLIGHT_BG, factor);
+                    }
 
                     ui.add(InstructionRow::new(
                         row.orig.as_ref(),
@@ -403,6 +432,8 @@ impl DiffTab {
 
 impl TabView for DiffTab {
     fn render(&mut self, ui: &mut egui::Ui) -> Option<UiAction> {
+        const HIGHLIGHT_DURATION: Duration = Duration::from_millis(1000);
+
         let mut action = None;
 
         ui.vertical(|ui| {
@@ -438,6 +469,30 @@ impl TabView for DiffTab {
                 scroll_to_row = Some(row_idx);
                 self.current_diff_row = Some(row_idx);
             }
+
+            if let Some(row_idx) = scroll_to_row {
+                self.highlighted_row = Some((row_idx, Instant::now()));
+            }
+
+            let highlight = if let Some((h_row, start_time)) = self.highlighted_row {
+                let elapsed = start_time.elapsed();
+                if elapsed >= HIGHLIGHT_DURATION {
+                    self.highlighted_row = None;
+                    None
+                } else {
+                    ui.request_repaint();
+                    let t = elapsed.as_secs_f32() / HIGHLIGHT_DURATION.as_secs_f32();
+                    let factor = if t < 0.2 {
+                        1.0
+                    } else {
+                        let fade = 1.0 - (t - 0.2) / 0.8;
+                        fade * fade
+                    };
+                    Some((h_row, factor))
+                }
+            } else {
+                None
+            };
 
             let total_hunks = self.hunks.len();
             let current_hunk = self
@@ -517,7 +572,7 @@ impl TabView for DiffTab {
                         ui.scroll_to_rect(target_rect, Some(egui::Align::Center));
                     }
 
-                    self.render_diff_grid(ui, row_range);
+                    self.render_diff_grid(ui, row_range, highlight);
                 });
             });
         });
@@ -534,4 +589,13 @@ impl TabView for DiffTab {
     fn title(&self) -> egui::WidgetText {
         self.func_name.clone().into()
     }
+}
+
+fn lerp_color(a: Color32, b: Color32, t: f32) -> Color32 {
+    let t = t.clamp(0.0, 1.0);
+    Color32::from_rgb(
+        (a.r() as f32 + t * (b.r() - a.r()) as f32).round() as u8,
+        (a.g() as f32 + t * (b.g() - a.g()) as f32).round() as u8,
+        (a.b() as f32 + t * (b.b() - a.b()) as f32).round() as u8,
+    )
 }

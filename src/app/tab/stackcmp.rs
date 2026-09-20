@@ -13,9 +13,9 @@ use crate::{
 
 const TABLE_COLUMNS: [(&str, f32); 5] = [
     ("Status", 65.0),
-    ("Orig", 90.0),
-    ("Recomp", 90.0),
-    ("Delta", 40.0),
+    ("Orig", 110.0),
+    ("Recomp", 110.0),
+    ("Delta", 50.0),
     ("Size", 40.0),
 ];
 
@@ -263,11 +263,15 @@ impl StackcmpTab {
             return;
         }
 
-        let status_badge = match row.status {
-            StackcmpStatus::Matched => RichText::new("MATCH").color(Color32::GREEN),
-            StackcmpStatus::Mismatch => RichText::new("DIFF").color(Color32::YELLOW),
-            StackcmpStatus::Conflict => RichText::new("CONFLICT").color(Color32::LIGHT_RED),
-            StackcmpStatus::Unknown => RichText::new("UNKNOWN").color(Color32::LIGHT_BLUE),
+        let status_badge = if row.is_continuation {
+            RichText::new("↳").color(Color32::LIGHT_RED)
+        } else {
+            match row.status {
+                StackcmpStatus::Matched => RichText::new("MATCH").color(Color32::GREEN),
+                StackcmpStatus::Mismatch => RichText::new("DIFF").color(Color32::YELLOW),
+                StackcmpStatus::Conflict => RichText::new("CONFLICT").color(Color32::LIGHT_RED),
+                StackcmpStatus::Unknown => RichText::new("UNKNOWN").color(Color32::LIGHT_BLUE),
+            }
         };
 
         let delta = row.orig.offset - row.recomp.offset;
@@ -286,9 +290,17 @@ impl StackcmpTab {
             Color32::LIGHT_RED
         };
 
-        let orig_str = Self::format_offset(&row.orig, row.status);
+        let orig_str = if row.orig_repeated {
+            "↳".to_string()
+        } else {
+            Self::format_offset(&row.orig, row.status)
+        };
 
-        let recomp_str = Self::format_offset(&row.recomp, row.status);
+        let recomp_str = if row.recomp_repeated {
+            "↳".to_string()
+        } else {
+            Self::format_offset(&row.recomp, row.status)
+        };
 
         let size_str = if let Some(next) = next_row {
             if matches!(row.status, StackcmpStatus::Unknown) {

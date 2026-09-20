@@ -74,25 +74,57 @@ pub struct StackcmpRow {
     pub status: StackcmpStatus,
     pub orig: StackVariable,
     pub recomp: StackVariable,
+    pub is_continuation: bool,
+    pub orig_repeated: bool,
+    pub recomp_repeated: bool,
 }
 
 impl StackcmpRow {
-    fn new(row: &str) -> Option<Self> {
+    fn new(row: &str) -> Vec<Self> {
         let mut chars = row.chars();
-        let first_char = chars.next()?;
+        let Some(first_char) = chars.next() else {
+            return Vec::new();
+        };
         let remainder = chars.as_str().trim_start();
 
-        let (orig_str, recomp_str) = remainder.split_once(':')?;
+        let Some((orig_str, recomp_str)) = remainder.split_once(':') else {
+            return Vec::new();
+        };
 
         let status = StackcmpStatus::from_char(first_char);
-        let orig = StackVariable::new(orig_str);
-        let recomp = StackVariable::new(recomp_str);
+        let orig_vars = Self::parse_stack_side(orig_str);
+        let recomp_vars = Self::parse_stack_side(recomp_str);
 
-        Some(Self {
-            status,
-            orig,
-            recomp,
-        })
+        let max_len = orig_vars.len().max(recomp_vars.len());
+        if max_len == 0 {
+            return Vec::new();
+        }
+
+        let mut rows = Vec::with_capacity(max_len);
+        for i in 0..max_len {
+            let (orig, orig_repeated) = if i < orig_vars.len() {
+                (orig_vars[i].clone(), false)
+            } else {
+                (orig_vars.last().cloned().unwrap_or_default(), true)
+            };
+
+            let (recomp, recomp_repeated) = if i < recomp_vars.len() {
+                (recomp_vars[i].clone(), false)
+            } else {
+                (recomp_vars.last().cloned().unwrap_or_default(), true)
+            };
+
+            rows.push(Self {
+                status,
+                orig,
+                recomp,
+                is_continuation: i > 0,
+                orig_repeated,
+                recomp_repeated,
+            });
+        }
+
+        rows
     }
 
     pub fn name(&self) -> &str {
@@ -101,6 +133,66 @@ impl StackcmpRow {
             .as_deref()
             .or(self.recomp.name.as_deref())
             .unwrap_or("-")
+    }
+
+    fn parse_stack_side(s: &str) -> Vec<StackVariable> {
+        let trimmed = s.trim();
+        if trimmed.starts_with('[') && trimmed.ends_with(']') {
+            let inner = &trimmed[1..trimmed.len() - 1];
+            let mut items = Vec::new();
+            let mut in_quote = false;
+            let mut quote_char = ' ';
+            let mut escaped = false;
+            let mut current = String::new();
+
+            for c in inner.chars() {
+                if escaped {
+                    current.push(c);
+                    escaped = false;
+                    continue;
+                }
+                if c == '\\' {
+                    escaped = true;
+                    continue;
+                }
+
+                if in_quote {
+                    if c == quote_char {
+                        in_quote = false;
+                        let item = current.trim();
+                        if !item.is_empty() {
+                            items.push(item.to_string());
+                        }
+                        current.clear();
+                    } else {
+                        current.push(c);
+                    }
+                } else if c == '\'' || c == '"' {
+                    in_quote = true;
+                    quote_char = c;
+                } else if c == ',' {
+                    let item = current.trim();
+                    if !item.is_empty() {
+                        items.push(item.to_string());
+                        current.clear();
+                    }
+                } else {
+                    current.push(c);
+                }
+            }
+
+            let item = current.trim();
+            if !item.is_empty() {
+                items.push(item.to_string());
+            }
+
+            items
+                .into_iter()
+                .map(|item| StackVariable::new(&item))
+                .collect()
+        } else {
+            vec![StackVariable::new(trimmed)]
+        }
     }
 }
 
@@ -144,12 +236,11 @@ impl StackcmpReport {
                 continue;
             }
 
-            if let Some(row) = StackcmpRow::new(trimmed) {
-                match current_section {
-                    Section::Orig => report.ordered_by_orig.push(row),
-                    Section::Recomp => report.ordered_by_recomp.push(row),
-                    _ => {}
-                }
+            let rows = StackcmpRow::new(trimmed);
+            match current_section {
+                Section::Orig => report.ordered_by_orig.extend(rows),
+                Section::Recomp => report.ordered_by_recomp.extend(rows),
+                _ => {}
             }
         }
 
