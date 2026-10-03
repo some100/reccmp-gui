@@ -1,3 +1,5 @@
+use iced_x86::FlowControl;
+
 use crate::{
     app::config::DisassemblySettings,
     disassemble::{Instruction, SymbolMap, table::TablesDiff},
@@ -173,7 +175,7 @@ impl DiffRow {
             return Self::align_instructions(orig_disasm, recomp_disasm, ctx, true);
         }
 
-        let mut anchors: Vec<(usize, usize)> = Vec::new();
+        let mut raw_anchors: Vec<(usize, usize)> = Vec::new();
         let mut search_orig = 0;
         let mut search_recomp = 0;
 
@@ -193,12 +195,34 @@ impl DiffRow {
                         if let (Some(o_pos), Some(r_pos)) = (orig_pos, recomp_pos) {
                             let orig_idx = search_orig + o_pos;
                             let recomp_idx = search_recomp + r_pos;
-                            anchors.push((orig_idx, recomp_idx));
+                            raw_anchors.push((orig_idx, recomp_idx));
                             search_orig = orig_idx + 1;
                             search_recomp = recomp_idx + 1;
                         }
                     }
                 }
+            }
+        }
+
+        let mut anchors: Vec<(usize, usize)> = Vec::new();
+        let n = raw_anchors.len();
+
+        for i in 0..n {
+            let (o_curr, r_curr) = raw_anchors[i];
+
+            let is_prev_consecutive =
+                i > 0 && raw_anchors[i - 1].0 + 1 == o_curr && raw_anchors[i - 1].1 + 1 == r_curr;
+
+            let is_next_consecutive = i + 1 < n
+                && o_curr + 1 == raw_anchors[i + 1].0
+                && r_curr + 1 == raw_anchors[i + 1].1;
+
+            let is_ret_or_call = orig_disasm[o_curr].raw.as_ref().map_or(false, |raw| {
+                matches!(raw.flow_control(), FlowControl::Call | FlowControl::Return)
+            });
+
+            if is_prev_consecutive || is_next_consecutive || is_ret_or_call {
+                anchors.push((o_curr, r_curr));
             }
         }
 

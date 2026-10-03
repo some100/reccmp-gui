@@ -56,11 +56,6 @@ impl App {
         match msg {
             Message::Log(log) => self.logs.push(log),
             Message::CompileFinished(generation) => {
-                let was_cancelling = self
-                    .project
-                    .as_ref()
-                    .is_some_and(|project| project.tool_state.cancelling);
-
                 if let Some(project) = &mut self.project {
                     project.tool_state.compiling = None;
                     project.tool_state.update_cancelling();
@@ -71,10 +66,6 @@ impl App {
                 }
 
                 self.tool_cancels.compile.take();
-
-                if !was_cancelling {
-                    self.trigger_tools();
-                }
             }
             Message::ReccmpFinished { report, generation } => {
                 if let Some(project) = &mut self.project {

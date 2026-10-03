@@ -595,8 +595,8 @@ impl TabView for DiffTab {
 fn lerp_color(a: Color32, b: Color32, t: f32) -> Color32 {
     let t = t.clamp(0.0, 1.0);
     Color32::from_rgb(
-        (a.r() as f32 + t * (b.r() - a.r()) as f32).round() as u8,
-        (a.g() as f32 + t * (b.g() - a.g()) as f32).round() as u8,
-        (a.b() as f32 + t * (b.b() - a.b()) as f32).round() as u8,
+        (f32::from(a.r()) + t * f32::from(b.r() - a.r())).round() as u8,
+        (f32::from(a.g()) + t * f32::from(b.g() - a.g())).round() as u8,
+        (f32::from(a.b()) + t * f32::from(b.b() - a.b())).round() as u8,
     )
 }

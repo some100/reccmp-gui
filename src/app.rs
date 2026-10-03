@@ -397,6 +397,8 @@ impl App {
             project.tool_state.cancelling_since = None;
         }
 
+        self.trigger_tools();
+
         Ok(())
     }
 
